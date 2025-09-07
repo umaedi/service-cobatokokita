@@ -3,8 +3,9 @@
 namespace App\Services;
 
 use App\Models\Product;
-use App\Models\Transaction;
 use Illuminate\Support\Facades\Storage;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
 
 class ProductService
 {
@@ -13,19 +14,29 @@ class ProductService
     {
         try {
             if (isset($data['image']) && $data['image']->isValid()) {
-                // Simpan ke storage/app/public/images
-                $path = $data['image']->store('images/products', 'public');
+                $manager = new ImageManager(new Driver());
+                $image = $manager->read($data['image']->getPathname());
+
+                // resize + crop
+                $image->cover(600, 600);
+
+                // simpan sebagai webp
+                $filename = uniqid() . '.webp';
+                $path = 'images/products/' . $filename;
+                $image->toWebp(60)->save(storage_path('app/public/' . $path));
+
                 $data['image'] = $path;
             }
+
             Product::create([
-                'branch_id' => 1,
+                'branch_id'   => 1,
                 'category_id' => $data['category_id'],
                 'unit_id'     => $data['unit_id'],
                 'name'        => $data['name'],
                 'price_buy'   => $data['price_buy'],
                 'price_sell'  => $data['price_sell'],
                 'stock'       => $data['stock'] ?? 0,
-                'image'       => $data['image'],
+                'image'       => $data['image'] ?? null,
             ]);
 
             return ['success' => true, 'message' => 'Item berhasil disimpan'];
@@ -50,7 +61,19 @@ class ProductService
                 if ($product->image && Storage::disk('public')->exists($product->image)) {
                     Storage::disk('public')->delete($product->image);
                 }
-                $data['image'] = $data['image']->store('images/products', 'public');
+
+                $manager = new ImageManager(new Driver());
+                $image = $manager->read($data['image']->getPathname());
+
+                // resize + crop
+                $image->cover(600, 600);
+
+                // simpan sebagai webp
+                $filename = uniqid() . '.webp';
+                $path = 'images/products/' . $filename;
+                $image->toWebp(60)->save(storage_path('app/public/' . $path));
+
+                $data['image'] = $path;
             }
 
             $product->update($data);
@@ -66,6 +89,9 @@ class ProductService
     {
         try {
             $product = Product::findOrFail($id);
+            if ($product->image && Storage::disk('public')->exists($product->image)) {
+                Storage::disk('public')->delete($product->image);
+            }
             $product->delete();
             return true;
         } catch (\Exception $e) {
